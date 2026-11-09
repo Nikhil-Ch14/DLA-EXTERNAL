@@ -1,0 +1,70 @@
+import pandas as pd
+import tensorflow as tf
+
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Embedding
+from tensorflow.keras.layers import GlobalAveragePooling1D
+from tensorflow.keras.layers import Concatenate, Dense
+
+from sklearn.model_selection import train_test_split
+
+data = pd.read_csv("train.csv")
+
+data = data[['question1', 'question2', 'is_duplicate']]
+data = data.dropna()
+
+q1 = data['question1'].astype(str).tolist()
+q2 = data['question2'].astype(str).tolist()
+
+y = data['is_duplicate'].values
+
+tokenizer = Tokenizer(num_words=20000, oov_token='<OOV>')
+
+tokenizer.fit_on_texts(q1 + q2)
+
+x1 = tokenizer.texts_to_sequences(q1)
+x2 = tokenizer.texts_to_sequences(q2)
+
+x1 = pad_sequences(x1, maxlen=30, padding='post')
+x2 = pad_sequences(x2, maxlen=30, padding='post')
+
+x1_train, x1_test, x2_train, x2_test, y_train, y_test = train_test_split(
+    x1, x2, y, test_size=0.2, random_state=42
+)
+
+input1 = Input(shape=(30,))
+input2 = Input(shape=(30,))
+
+embedding = Embedding(20000, 64, mask_zero=True)
+
+a = embedding(input1)
+b = embedding(input2)
+
+a = GlobalAveragePooling1D()(a)
+b = GlobalAveragePooling1D()(b)
+
+combined = Concatenate()([a, b])
+
+output = Dense(64, activation='relu')(combined)
+output = Dense(1, activation='sigmoid')(output)
+
+model = Model([input1, input2], output)
+
+model.compile(optimizer='adam',
+              loss='binary_crossentropy',
+              metrics=['accuracy'])
+
+model.fit(
+    [x1_train, x2_train],
+    y_train,
+    epochs=5,
+    batch_size=64,
+    validation_split=0.2
+)
+
+loss, accuracy = model.evaluate([x1_test, x2_test], y_test)
+
+print("Test Accuracy:", accuracy)
