@@ -1,0 +1,119 @@
+# Step 1: Import Required Libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.arima.model import ARIMA
+
+from sklearn.metrics import mean_squared_error
+
+# Step 2: Load the Dataset
+url = 'https://raw.githubusercontent.com/jbrownlee/Datasets/master/airline-passengers.csv'
+
+data = pd.read_csv(url, parse_dates=['Month'], index_col='Month')
+
+series = data['Passengers'].astype(float)
+
+print(data.head())
+
+# Step 3: Check Dataset Shape
+print(data.shape)
+
+# Step 4: Visualize the Original Time Series
+series.plot(title='Monthly Airline Passengers')
+plt.show()
+
+# Step 5: Check Stationarity using ADF Test
+adf = adfuller(series)
+
+print('ADF Statistic:', adf[0])
+print('p-value:', adf[1])
+
+# Step 6: Apply First Differencing
+series_diff = series.diff().dropna()
+
+series_diff.plot(title='First Difference')
+plt.show()
+
+# Step 7: Check Stationarity Again
+print('ADF p-value:', adfuller(series_diff)[1])
+
+# Step 8: Plot Autocorrelation (ACF)
+plot_acf(series_diff, lags=24)
+plt.show()
+
+# Step 9: Plot Partial Autocorrelation (PACF)
+plot_pacf(series_diff, lags=24)
+plt.show()
+
+# Step 10: Split Data into Training and Testing
+h = 12
+
+train = series[:-h]
+test = series[-h:]
+
+# Step 11: Find the Best ARIMA Order
+best_aic = np.inf
+best_order = None
+
+for p in range(0, 4):
+    for d in range(0, 3):
+        for q in range(0, 4):
+            try:
+                model = ARIMA(train, order=(p, d, q)).fit()
+
+                if model.aic < best_aic:
+                    best_aic = model.aic
+                    best_order = (p, d, q)
+
+            except:
+                pass
+
+print('Best order:', best_order)
+
+# Step 12: Fit ARIMA Model and Forecast
+model = ARIMA(train, order=best_order).fit()
+
+fc_res = model.get_forecast(steps=h)
+
+pred = fc_res.predicted_mean
+ci = fc_res.conf_int()
+
+# Step 13: Calculate RMSE
+rmse = np.sqrt(mean_squared_error(test, pred))
+
+# Step 14: Calculate MAPE
+mape = np.mean(np.abs((test - pred) / test)) * 100
+
+print('RMSE:', rmse)
+print('MAPE:', mape)
+
+# Step 15: Fit Model on Complete Dataset
+model_full = ARIMA(series, order=best_order).fit()
+
+# Step 16: Forecast the Next 24 Periods
+future = model_full.get_forecast(steps=24)
+
+forecast_values = future.predicted_mean
+
+print(forecast_values)
+
+# Step 17: Calculate Confidence Intervals
+confidence_intervals = future.conf_int()
+
+print(confidence_intervals.head())
+
+# Step 18: Plot ARIMA Forecast
+plt.figure(figsize=(10,5))
+
+plt.plot(series, label='Observed')
+plt.plot(forecast_values, label='Forecast')
+
+plt.title('ARIMA Forecast for Next 24 Periods')
+plt.xlabel('Time')
+plt.ylabel('Passengers')
+plt.legend()
+
+plt.show()
